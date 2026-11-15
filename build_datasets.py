@@ -729,6 +729,14 @@ def build_fountains():
       "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
       "https://overpass-api.de/api/interpreter",
   ]
+  # Correzioni verificate sul campo rispetto alle coordinate crowdsourced di OpenStreetMap
+  fountain_overrides = {
+      "osm_1438358926": {
+          "lat": 41.89565,
+          "lon": 12.55679,
+      },  # Viale della Venezia Giulia angolo Via Olevano Romano (Villa Gordiani)
+  }
+
   seen_osm_ids = set()
   for label, bbox in bboxes:
     query = f'[out:json][timeout:25];node["amenity"="drinking_water"]({bbox});out body;'
@@ -749,6 +757,10 @@ def build_fountains():
           lon = el.get("lon")
           if not lat or not lon:
             continue
+          fid = f"osm_{oid}"
+          if fid in fountain_overrides:
+            lat = fountain_overrides[fid].get("lat", lat)
+            lon = fountain_overrides[fid].get("lon", lon)
           tags = el.get("tags", {})
           is_roma = 41.79 <= lat <= 42.02 and 12.35 <= lon <= 12.65
           name = (
@@ -757,7 +769,7 @@ def build_fountains():
               or ("Nasone (Fontanella Pubblica)" if is_roma else "Fontanella Acqua Potabile")
           )
           fountains.append({
-              "id": f"osm_{oid}",
+              "id": fid,
               "type": "nasone" if is_roma else "fountain",
               "name": name,
               "lat": round(lat, 5),
