@@ -729,13 +729,18 @@ def build_fountains():
       "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
       "https://overpass-api.de/api/interpreter",
   ]
-  # Correzioni verificate sul campo rispetto alle coordinate crowdsourced di OpenStreetMap
-  fountain_overrides = {
-      "osm_1438358926": {
-          "lat": 41.89565,
-          "lon": 12.55679,
-      },  # Viale della Venezia Giulia angolo Via Olevano Romano (Villa Gordiani)
-  }
+  # Correzioni e aggiunte verificate sul campo da data/fountain_overrides.json
+  overrides_path = os.path.join(LOCAL_DATA_DIR, "fountain_overrides.json")
+  fountain_overrides = {}
+  added_fountains = []
+  if os.path.isfile(overrides_path):
+    try:
+      with open(overrides_path, "r") as f:
+        ov_data = json.load(f)
+      fountain_overrides = ov_data.get("overrides", {})
+      added_fountains = ov_data.get("added", [])
+    except Exception as e:
+      print(f"   [WARN] Lettura fountain_overrides.json: {e}")
 
   seen_osm_ids = set()
   for label, bbox in bboxes:
@@ -758,29 +763,46 @@ def build_fountains():
           if not lat or not lon:
             continue
           fid = f"osm_{oid}"
-          if fid in fountain_overrides:
-            lat = fountain_overrides[fid].get("lat", lat)
-            lon = fountain_overrides[fid].get("lon", lon)
+          ov_item = fountain_overrides.get(fid, {})
+          if ov_item.get("hidden") is True:
+            continue
+          lat = ov_item.get("lat", lat)
+          lon = ov_item.get("lon", lon)
           tags = el.get("tags", {})
           is_roma = 41.79 <= lat <= 42.02 and 12.35 <= lon <= 12.65
           name = (
-              tags.get("name")
+              ov_item.get("name")
+              or tags.get("name")
               or tags.get("description")
               or ("Nasone (Fontanella Pubblica)" if is_roma else "Fontanella Acqua Potabile")
           )
+          note = ov_item.get("note") or (
+              "Acqua potabile gratuita" + (f" ({tags.get('operator')})" if tags.get("operator") else "")
+          )
           fountains.append({
               "id": fid,
-              "type": "nasone" if is_roma else "fountain",
+              "type": ov_item.get("type") or ("nasone" if is_roma else "fountain"),
               "name": name,
               "lat": round(lat, 5),
               "lon": round(lon, 5),
-              "note": "Acqua potabile gratuita" + (f" ({tags.get('operator')})" if tags.get("operator") else ""),
+              "note": note,
           })
           added += 1
         print(f"   -> {added} Nasoni/Fontanelle scaricati per {label} ({ep})!")
         break
       except Exception as e:
         print(f"   [WARN] Overpass {label} su {ep}: {e}")
+
+  for custom_f in added_fountains:
+    if custom_f.get("id") and custom_f.get("lat") and custom_f.get("lon"):
+      fountains.append({
+          "id": custom_f["id"],
+          "type": custom_f.get("type", "nasone"),
+          "name": custom_f.get("name", "Nasone / Fontanella Potabile"),
+          "lat": round(float(custom_f["lat"]), 5),
+          "lon": round(float(custom_f["lon"]), 5),
+          "note": custom_f.get("note", "Acqua potabile gratuita (Segnalazione verificata)"),
+      })
 
   return fountains
 
